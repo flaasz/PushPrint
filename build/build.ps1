@@ -7,15 +7,19 @@
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('Lint', 'Test', 'Package', 'All')] [string[]] $Task = @('Lint', 'Test'),
+    # Accepts an array (-Task Lint,Test from a PowerShell prompt) or a comma-separated string ("Lint,Test" when launched via -File).
+    [string[]] $Task = @('Lint', 'Test'),
     [switch] $CI
 )
 $ErrorActionPreference = 'Stop'
+$Task = @($Task -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+$known = 'Lint', 'Test', 'Package', 'All'
+foreach ($t in $Task) { if ($t -notin $known) { throw "Unknown task '$t'. Valid: $($known -join ', ')" } }
 $Root = Split-Path -Parent $PSScriptRoot
 $Out  = Join-Path $Root 'out'
 $failed = $false
 
-function Ensure-Module($Name, $MinVersion) {
+function Install-RequiredModule($Name, $MinVersion) {
     if (-not (Get-Module -ListAvailable $Name | Where-Object { -not $MinVersion -or $_.Version -ge [version]$MinVersion })) {
         Write-Host "Installing $Name..." -ForegroundColor Yellow
         Install-Module $Name -MinimumVersion $MinVersion -Scope CurrentUser -Force -SkipPublisherCheck
@@ -25,7 +29,7 @@ function Ensure-Module($Name, $MinVersion) {
 if ($Task -contains 'All') { $Task = @('Lint', 'Test', 'Package') }
 
 if ($Task -contains 'Lint') {
-    Ensure-Module PSScriptAnalyzer
+    Install-RequiredModule PSScriptAnalyzer
     Write-Host '== PSScriptAnalyzer' -ForegroundColor Cyan
     $settings = Join-Path $PSScriptRoot 'PSScriptAnalyzerSettings.psd1'
     $findings = Invoke-ScriptAnalyzer -Path (Join-Path $Root 'src') -Recurse -Settings $settings
@@ -35,7 +39,7 @@ if ($Task -contains 'Lint') {
 }
 
 if ($Task -contains 'Test') {
-    Ensure-Module Pester 5.5.0
+    Install-RequiredModule Pester 5.5.0
     Import-Module Pester -MinimumVersion 5.5.0
     Write-Host '== Pester' -ForegroundColor Cyan
     $cfg = New-PesterConfiguration
