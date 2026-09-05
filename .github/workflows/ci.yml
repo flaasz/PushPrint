@@ -8,24 +8,29 @@ on:
 
 jobs:
   test:
-    name: Lint + test (${{ matrix.shell }})
+    name: Lint + test (${{ matrix.edition }})
     runs-on: windows-latest
     strategy:
       fail-fast: false
       matrix:
-        shell: [powershell, pwsh]
+        include:
+          - edition: windows-powershell-5.1
+            exe: powershell.exe
+          - edition: powershell-7
+            exe: pwsh.exe
     steps:
       - uses: actions/checkout@v4
 
+      # `shell:` cannot use the matrix context, so the edition is chosen on the command line instead.
       - name: Build
-        shell: ${{ matrix.shell }}
-        run: ./build/build.ps1 -Task Lint,Test -CI
+        shell: cmd
+        run: ${{ matrix.exe }} -NoProfile -NonInteractive -ExecutionPolicy Bypass -File build\build.ps1 -Task Lint,Test -CI
 
       - name: Publish test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-${{ matrix.shell }}
+          name: test-results-${{ matrix.edition }}
           path: testResults.xml
 
   package:
