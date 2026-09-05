@@ -1,0 +1,46 @@
+{
+  "_comment": "Copy to settings.json (same folder, or %APPDATA%\\PushPrint\\settings.json). Every key is optional; anything you omit keeps the built-in default. settings.json is git-ignored because it holds your own servers and subnets.",
+
+  "adminUserPattern": "{domain}\\adm{user}",
+  "driverRoot": "%ProgramData%\\PushPrint\\drivers",
+  "catalogPath": "%APPDATA%\\PushPrint\\printers.json",
+  "remoteTempDir": "C:\\Temp\\PushPrint",
+  "timeoutSec": 600,
+
+  "printServers": {
+    "HQ": "print01.corp.example.com",
+    "Plant-North": "print02.corp.example.com"
+  },
+
+  "pullPrintServers": [
+    "safeq01.corp.example.com"
+  ],
+
+  "pullQueueMarkers": ["SafeQ", "YSoft", "PaperCut", "Printix", "FollowMe", "Secure"],
+
+  "sites": {
+    "_comment": "Only needed when AD Sites and Services has no subnets for a location, or off-domain. Merged with AD.",
+    "Warehouse-East": ["10.99.10.0/24", "10.99.11.0/24"]
+  },
+
+  "drivers": {
+    "KM": { "driverName": "KONICA MINOLTA Universal PCL" },
+    "HP": { "driverName": "HP Universal Printing PCL 6" },
+    "MYVENDOR": {
+      "displayName": "Example vendor",
+      "driverName": "Exact driver name from the INF",
+      "matchPattern": "ExampleCorp|SuperPrint",
+      "macPrefixes": ["AABBCC"]
+    }
+  },
+
+  "snmp": { "community": "public", "timeoutMs": 800, "retries": 1 },
+
+  "discovery": {
+    "dhcpServers": ["dhcp01.corp.example.com"],
+    "probePorts": [9100, 631, 515],
+    "tcpTimeoutMs": 400,
+    "maxThreads": 64,
+    "excludeSubnets": ["10.0.0.0/24"]
+  }
+}

@@ -1,0 +1,23 @@
+# Site-specific configuration and data (never commit your servers, subnets or printer inventory)
+config/settings.json
+config/*.local.json
+printers.json
+*.catalog.json
+
+# Vendor driver packages
+drivers/
+*.zip
+
+# Build / test output
+out/
+TestResults/
+testResults.xml
+coverage.xml
+*.nupkg
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+*.swp
