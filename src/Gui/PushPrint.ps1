@@ -67,7 +67,7 @@ try {
 
     # ------------------------------------------------------------------ log
     $LogBrush = @{ INFO = 'TextBrush'; WARN = 'WarnBrush'; ERROR = 'DangerBrush'; RESULT = 'SuccessBrush'; STEP = 'InfoBrush' }
-    function Write-Log([string] $Text, [string] $Level = 'INFO') {
+    function Write-GuiLog([string] $Text, [string] $Level = 'INFO') {
         $tb = New-Object System.Windows.Controls.TextBlock
         $tb.Text = '{0}  {1}' -f (Get-Date -Format 'HH:mm:ss'), $Text
         $tb.TextWrapping = 'Wrap'
@@ -82,7 +82,7 @@ try {
         $level = 'INFO'
         if ($rec.Tags -and $LogBrush.ContainsKey([string]$rec.Tags[0])) { $level = [string]$rec.Tags[0] }
         elseif ($msg -match '^(ERROR|WARN|RESULT|STEP)\b') { $level = $Matches[1] }
-        Write-Log ($msg -replace '^(ERROR|WARN|RESULT|STEP)\s+', '') $level
+        Write-GuiLog ($msg -replace '^(ERROR|WARN|RESULT|STEP)\s+', '') $level
     }
     $UI.LogClear.Add_Click({ $UI.LogList.Items.Clear() })
     $UI.LogCopy.Add_Click({ $text = ($UI.LogList.Items | ForEach-Object { $_.Text }) -join "`r`n"; if ($text) { [System.Windows.Clipboard]::SetText($text) } })
@@ -101,7 +101,7 @@ try {
     }
     function Start-Work {
         param([string] $Command, [scriptblock] $ScriptBlock, [hashtable] $Parameters = @{}, [object[]] $ArgumentList = @(), [scriptblock] $OnDone, [string] $Status)
-        if ($script:Job) { Write-Log 'Another task is still running.' 'WARN'; return }
+        if ($script:Job) { Write-GuiLog 'Another task is still running.' 'WARN'; return }
         $ps = [powershell]::Create()
         $ps.Runspace = $Runspace
         if ($ScriptBlock) { [void]$ps.AddScript($ScriptBlock.ToString()); foreach ($a in $ArgumentList) { [void]$ps.AddArgument($a) } }
@@ -116,10 +116,10 @@ try {
         $j = $script:Job; if (-not $j) { $Timer.Stop(); return }
         $ps = $j.PS
         while ($j.Seen.i -lt $ps.Streams.Information.Count) { Write-InfoRecord $ps.Streams.Information[$j.Seen.i]; $j.Seen.i++ }
-        while ($j.Seen.w -lt $ps.Streams.Warning.Count)     { Write-Log $ps.Streams.Warning[$j.Seen.w].Message 'WARN'; $j.Seen.w++ }
+        while ($j.Seen.w -lt $ps.Streams.Warning.Count)     { Write-GuiLog $ps.Streams.Warning[$j.Seen.w].Message 'WARN'; $j.Seen.w++ }
         while ($j.Seen.e -lt $ps.Streams.Error.Count) {
             $er = $ps.Streams.Error[$j.Seen.e]
-            Write-Log "$($er.Exception.Message)" 'ERROR'
+            Write-GuiLog "$($er.Exception.Message)" 'ERROR'
             $j.Seen.e++
         }
         if ($j.Handle.IsCompleted) {
@@ -129,12 +129,12 @@ try {
             catch {
                 $ok = $false
                 $ex = $_.Exception; if ($ex.InnerException) { $ex = $ex.InnerException }
-                Write-Log $ex.Message 'ERROR'
+                Write-GuiLog $ex.Message 'ERROR'
             }
             $ps.Dispose(); $script:Job = $null
             $elapsed = [int]((Get-Date) - $j.Started).TotalSeconds
             Set-Busy $false "Done in ${elapsed}s"
-            if ($ok -and $j.OnDone) { try { & $j.OnDone $output } catch { Write-Log "UI update failed: $($_.Exception.Message)" 'ERROR' } }
+            if ($ok -and $j.OnDone) { try { & $j.OnDone $output } catch { Write-GuiLog "UI update failed: $($_.Exception.Message)" 'ERROR' } }
         }
     })
 
@@ -258,10 +258,10 @@ try {
     }
     $UI.InstallSite.Add_SelectionChanged({ Update-InstallGrid })
     $UI.InstallSearch.Add_TextChanged({ Update-InstallGrid })
-    $UI.InstallReload.Add_Click({ Update-Catalog; Write-Log "Catalog reloaded ($($script:Catalog.Count) printers)" })
+    $UI.InstallReload.Add_Click({ Update-Catalog; Write-GuiLog "Catalog reloaded ($($script:Catalog.Count) printers)" })
     $UI.CatalogSite.Add_SelectionChanged({ Update-CatalogFilter })
     $UI.CatalogSearch.Add_TextChanged({ Update-CatalogFilter })
-    $UI.CatalogReload.Add_Click({ Update-Catalog; Write-Log "Catalog reloaded ($($script:Catalog.Count) printers)" })
+    $UI.CatalogReload.Add_Click({ Update-Catalog; Write-GuiLog "Catalog reloaded ($($script:Catalog.Count) printers)" })
     $UI.CatalogDelete.Add_Click({
         $rows = Get-SelectedRow $UI.CatalogGrid
         if (-not $rows.Count) { return }
@@ -274,21 +274,21 @@ try {
             $UI.CatalogGrid.CommitEdit([System.Windows.Controls.DataGridEditingUnit]::Row, $true) | Out-Null
             $items = @(ConvertFrom-CatalogTable)
             $items | Save-PrinterCatalog -Path $script:Cfg.catalogPath -InformationAction SilentlyContinue
-            Write-Log "Catalog saved: $($items.Count) printers -> $($script:Cfg.catalogPath)" 'RESULT'
+            Write-GuiLog "Catalog saved: $($items.Count) printers -> $($script:Cfg.catalogPath)" 'RESULT'
             Update-Catalog
         }
-        catch { Write-Log "Save failed: $($_.Exception.Message)" 'ERROR' }
+        catch { Write-GuiLog "Save failed: $($_.Exception.Message)" 'ERROR' }
     })
     $UI.CatalogOnline.Add_Click({
         $ips = @($UI.CatalogGrid.Items | ForEach-Object { $_['ip'] } | Where-Object { $_ -and $_ -isnot [DBNull] })
         if (-not $ips.Count) { return }
-        Write-Log "Checking $($ips.Count) printers..." 'STEP'
+        Write-GuiLog "Checking $($ips.Count) printers..." 'STEP'
         Start-Work -Command 'Test-PrinterOnline' -Parameters (@{ IPAddress = $ips } + $script:CfgArgs) -Status 'Checking printers' -OnDone {
             param($out)
             $off = @($out | Where-Object { -not $_.Online })
-            foreach ($o in $off) { Write-Log "$($o.IPAddress) offline" 'WARN' }
-            foreach ($o in ($out | Where-Object { $_.Online -and $_.ErrorState })) { Write-Log "$($o.IPAddress) $($o.SysName): $($o.ErrorState)" 'WARN' }
-            Write-Log "Online: $(@($out | Where-Object Online).Count) / $($out.Count)  (offline: $($off.Count))" 'RESULT'
+            foreach ($o in $off) { Write-GuiLog "$($o.IPAddress) offline" 'WARN' }
+            foreach ($o in ($out | Where-Object { $_.Online -and $_.ErrorState })) { Write-GuiLog "$($o.IPAddress) $($o.SysName): $($o.ErrorState)" 'WARN' }
+            Write-GuiLog "Online: $(@($out | Where-Object Online).Count) / $($out.Count)  (offline: $($off.Count))" 'RESULT'
         }
     })
 
@@ -350,12 +350,12 @@ try {
         $cred = Get-AdminCred; if (-not $cred) { return }
         $params.Credential = $cred
         Add-Recent $pcs
-        Write-Log "Install '$name' on $($pcs.Count) computer(s): $($pcs -join ', ')" 'STEP'
+        Write-GuiLog "Install '$name' on $($pcs.Count) computer(s): $($pcs -join ', ')" 'STEP'
         Start-Work -Command 'Install-RemotePrinter' -Parameters $params -Status "Installing on $($pcs.Count) computer(s)" -OnDone {
             param($out)
             $ok = @($out | Where-Object Success).Count; $bad = @($out | Where-Object { -not $_.Success })
-            foreach ($b in $bad) { Write-Log "$($b.ComputerName): $($b.Message)" 'ERROR' }
-            Write-Log "Install finished: $ok succeeded, $($bad.Count) failed" $(if ($bad.Count) { 'WARN' } else { 'RESULT' })
+            foreach ($b in $bad) { Write-GuiLog "$($b.ComputerName): $($b.Message)" 'ERROR' }
+            Write-GuiLog "Install finished: $ok succeeded, $($bad.Count) failed" $(if ($bad.Count) { 'WARN' } else { 'RESULT' })
         }
     })
 
@@ -365,12 +365,12 @@ try {
         $pc = $UI.MachineName.Text.Trim(); if (-not $pc) { Show-Error 'Enter a computer name.'; return }
         $cred = Get-AdminCred; if (-not $cred) { return }
         Add-Recent @($pc)
-        Write-Log "Listing printers on $pc" 'STEP'
+        Write-GuiLog "Listing printers on $pc" 'STEP'
         Start-Work -Command 'Get-RemotePrinter' -Parameters (@{ ComputerName = $pc; Credential = $cred } + $script:CfgArgs) -Status "Querying $pc" -OnDone {
             param($out)
             $script:MachineRows = @($out)
             $UI.MachineGrid.ItemsSource = (ConvertTo-DataTable -Rows $script:MachineRows -Columns @('Name', 'Kind', 'Port', 'HostAddress', 'Driver', 'Default', 'User')).DefaultView
-            Write-Log "$($script:MachineRows.Count) printer(s) on $pc" 'RESULT'
+            Write-GuiLog "$($script:MachineRows.Count) printer(s) on $pc" 'RESULT'
         }
     }
     $UI.MachineList.Add_Click({ Invoke-MachineList })
@@ -382,7 +382,7 @@ try {
         if (-not (Confirm-Action "Remove from ${pc}:`n`n$($names -join "`n")")) { return }
         $cred = Get-AdminCred; if (-not $cred) { return }
         $items = @($rows | ForEach-Object { @{ Name = "$($_['Name'])"; Kind = "$($_['Kind'])" } })
-        Write-Log "Removing $($items.Count) printer(s) from $pc" 'STEP'
+        Write-GuiLog "Removing $($items.Count) printer(s) from $pc" 'STEP'
         Start-Work -ScriptBlock {
             param($pc, $items, $cred, $cfgArgs)
             foreach ($i in $items) { Remove-RemotePrinter -ComputerName $pc -PrinterName $i.Name -Kind $i.Kind -Credential $cred -Confirm:$false @cfgArgs }
@@ -393,14 +393,14 @@ try {
     $script:SiteSubnets = @{}
     $script:DiscResults = @()
     $UI.DiscLoadSites.Add_Click({
-        Write-Log 'Loading AD sites and subnets' 'STEP'
+        Write-GuiLog 'Loading AD sites and subnets' 'STEP'
         Start-Work -Command 'Get-AdSiteSubnet' -Parameters $script:CfgArgs -Status 'Reading AD Sites and Services' -OnDone {
             param($out)
             $script:SiteSubnets = @{}
             foreach ($s in $out) { if (-not $script:SiteSubnets.ContainsKey($s.Site)) { $script:SiteSubnets[$s.Site] = New-Object System.Collections.Generic.List[string] }; $script:SiteSubnets[$s.Site].Add($s.Subnet) }
             $UI.DiscSites.Items.Clear()
             foreach ($site in ($script:SiteSubnets.Keys | Sort-Object)) { [void]$UI.DiscSites.Items.Add("$site  ($($script:SiteSubnets[$site].Count) subnets)") }
-            Write-Log "$($script:SiteSubnets.Count) sites, $(@($out).Count) subnets" 'RESULT'
+            Write-GuiLog "$($script:SiteSubnets.Count) sites, $(@($out).Count) subnets" 'RESULT'
         }
     })
     $UI.DiscRun.Add_Click({
@@ -413,14 +413,14 @@ try {
         if ($subnets.Count) { $params.Subnet = $subnets }
         elseif ($sites.Count) { $params.Site = $sites }
         else { Show-Error 'Select one or more AD sites, or type subnets.'; return }
-        Write-Log "Discovery: $(if ($subnets.Count) { $subnets -join ', ' } else { $sites -join ', ' }) via $($sources -join '+')" 'STEP'
+        Write-GuiLog "Discovery: $(if ($subnets.Count) { $subnets -join ', ' } else { $sites -join ', ' }) via $($sources -join '+')" 'STEP'
         Start-Work -Command 'Invoke-PrinterDiscovery' -Parameters $params -Status 'Discovering printers' -OnDone {
             param($out)
             $script:DiscResults = @($out | ForEach-Object { $_ | Add-Member -NotePropertyName flagsText -NotePropertyValue (@($_.flags) -join ', ') -PassThru -Force })
             $UI.DiscGrid.ItemsSource = (ConvertTo-DataTable -Rows $script:DiscResults -Columns @('name', 'ip', 'vendor', 'model', 'serial', 'site', 'shareName', 'queueKind', 'flagsText')).DefaultView
             $flagged = @($script:DiscResults | Where-Object { $_.flags.Count }).Count
             $UI.DiscSummary.Text = "$($script:DiscResults.Count) printers found, $flagged with flags"
-            Write-Log $UI.DiscSummary.Text 'RESULT'
+            Write-GuiLog $UI.DiscSummary.Text 'RESULT'
         }
     })
     $UI.DiscMerge.Add_Click({
@@ -434,7 +434,7 @@ try {
         $dlg = New-Object Microsoft.Win32.SaveFileDialog; $dlg.Filter = 'CSV|*.csv'; $dlg.FileName = "printers-discovery-$(Get-Date -Format yyyyMMdd-HHmm).csv"
         if ($dlg.ShowDialog($Window)) {
             $script:DiscResults | Select-Object name, ip, mac, vendor, model, serial, site, location, printServer, shareName, queueKind, hostName, snmpName, dhcpName, @{n = 'sources'; e = { $_.sources -join ' ' } }, @{n = 'flags'; e = { $_.flags -join ' ' } }, note | Export-Csv -Path $dlg.FileName -NoTypeInformation -Encoding UTF8
-            Write-Log "Exported to $($dlg.FileName)" 'RESULT'
+            Write-GuiLog "Exported to $($dlg.FileName)" 'RESULT'
         }
     })
     $UI.DiscOnline.Add_Click({
@@ -442,8 +442,8 @@ try {
         if (-not $ips.Count) { return }
         Start-Work -Command 'Test-PrinterOnline' -Parameters (@{ IPAddress = $ips } + $script:CfgArgs) -Status 'Checking printers' -OnDone {
             param($out)
-            foreach ($o in ($out | Where-Object { -not $_.Online })) { Write-Log "$($o.IPAddress) offline" 'WARN' }
-            Write-Log "Online: $(@($out | Where-Object Online).Count) / $($out.Count)" 'RESULT'
+            foreach ($o in ($out | Where-Object { -not $_.Online })) { Write-GuiLog "$($o.IPAddress) offline" 'WARN' }
+            Write-GuiLog "Online: $(@($out | Where-Object Online).Count) / $($out.Count)" 'RESULT'
         }
     })
 
@@ -455,19 +455,19 @@ try {
     $UserConfig = Join-Path $StateDir 'settings.json'
     $UI.SettingsCreate.Add_Click({
         $target = if ($ConfigPath) { $ConfigPath } else { $UserConfig }
-        if (Test-Path -LiteralPath $target) { Write-Log "Already exists: $target" 'WARN' }
+        if (Test-Path -LiteralPath $target) { Write-GuiLog "Already exists: $target" 'WARN' }
         else {
             $ex = Get-ExampleConfig
-            if ($ex) { Copy-Item -LiteralPath $ex -Destination $target; Write-Log "Created $target - edit it, then press Reload configuration" 'RESULT' }
-            else { '{ }' | Set-Content -LiteralPath $target -Encoding UTF8; Write-Log "Created empty $target" 'RESULT' }
+            if ($ex) { Copy-Item -LiteralPath $ex -Destination $target; Write-GuiLog "Created $target - edit it, then press Reload configuration" 'RESULT' }
+            else { '{ }' | Set-Content -LiteralPath $target -Encoding UTF8; Write-GuiLog "Created empty $target" 'RESULT' }
         }
         Start-Process notepad.exe $target
     })
-    $UI.SettingsOpen.Add_Click({ $p = if ($script:Cfg.sourcePath) { $script:Cfg.sourcePath } else { $UserConfig }; if (Test-Path -LiteralPath $p) { Start-Process notepad.exe $p } else { Write-Log "No settings file yet - use 'Create settings.json from example'" 'WARN' } })
+    $UI.SettingsOpen.Add_Click({ $p = if ($script:Cfg.sourcePath) { $script:Cfg.sourcePath } else { $UserConfig }; if (Test-Path -LiteralPath $p) { Start-Process notepad.exe $p } else { Write-GuiLog "No settings file yet - use 'Create settings.json from example'" 'WARN' } })
     $UI.SettingsFolder.Add_Click({ $p = if ($script:Cfg.sourcePath) { Split-Path $script:Cfg.sourcePath -Parent } else { $StateDir }; Start-Process explorer.exe $p })
     $UI.SettingsReload.Add_Click({
-        try { $script:Cfg = Get-Cfg; Update-ConfigView; Update-Catalog; Write-Log "Configuration reloaded from $(if ($script:Cfg.sourcePath) { $script:Cfg.sourcePath } else { 'built-in defaults' })" 'RESULT' }
-        catch { Write-Log "Reload failed: $($_.Exception.Message)" 'ERROR' }
+        try { $script:Cfg = Get-Cfg; Update-ConfigView; Update-Catalog; Write-GuiLog "Configuration reloaded from $(if ($script:Cfg.sourcePath) { $script:Cfg.sourcePath } else { 'built-in defaults' })" 'RESULT' }
+        catch { Write-GuiLog "Reload failed: $($_.Exception.Message)" 'ERROR' }
     })
     $UI.SettingsDrivers.Add_Click({ $p = $script:Cfg.driverRoot; if (-not (Test-Path -LiteralPath $p)) { New-Item -Path $p -ItemType Directory -Force | Out-Null }; Start-Process explorer.exe $p })
 
@@ -476,9 +476,9 @@ try {
     Add-Recent @()
     Update-Catalog
     $UI.CredText.Text = if ($script:Gui.adminUser) { "$($script:Gui.adminUser) (password on first use)" } else { 'not set' }
-    Write-Log "PushPrint v$Version - module loaded from $(Split-Path $ModuleManifest -Parent)"
-    if (-not $script:Cfg.sourcePath) { Write-Log 'No settings.json found: using built-in defaults. Open Settings to create one.' 'WARN' }
-    if (-not $script:Catalog.Count) { Write-Log 'The catalog is empty. Use Discovery to build it, or add printers on the Catalog page.' 'WARN' }
+    Write-GuiLog "PushPrint v$Version - module loaded from $(Split-Path $ModuleManifest -Parent)"
+    if (-not $script:Cfg.sourcePath) { Write-GuiLog 'No settings.json found: using built-in defaults. Open Settings to create one.' 'WARN' }
+    if (-not $script:Catalog.Count) { Write-GuiLog 'The catalog is empty. Use Discovery to build it, or add printers on the Catalog page.' 'WARN' }
 
     $Window.Add_Closing({ try { if ($script:Job) { $script:Job.PS.Stop() }; $Runspace.Close(); $Runspace.Dispose() } catch { Write-Verbose $_ } })
     if ($env:PUSHPRINT_GUI_SMOKE) {
